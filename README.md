@@ -1,10 +1,10 @@
-# autotests-ai-singlestack-app-examples
+# java_spring-typescript_react-java_selenide
 
 Один стек, без матрицы других языков. Клонируй и запускай локально.
 
 ```bash
-git clone https://github.com/autotests-ai/autotests-ai-singlestack-app-examples.git
-cd autotests-ai-singlestack-app-examples
+git clone https://github.com/autotests-ai/java_spring-typescript_react-java_selenide.git
+cd java_spring-typescript_react-java_selenide
 docker compose up -d --build
 ```
 

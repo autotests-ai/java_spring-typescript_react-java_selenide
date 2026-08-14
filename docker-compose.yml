@@ -1,4 +1,4 @@
-name: autotests-ai-singlestack-app-examples
+name: java_spring-typescript_react-java_selenide
 
 services:
   postgres:
