@@ -1,0 +1,77 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// APP_BASE / API_BASE are resolved once at import time, so each case needs a fresh module.
+async function loadFor(pathname: string) {
+  window.history.replaceState({}, '', pathname);
+  vi.resetModules();
+  return import('../../lib/appBase');
+}
+
+afterEach(() => {
+  window.history.replaceState({}, '', '/');
+  vi.resetModules();
+});
+
+describe('appBase — mount precedence', () => {
+  it('takes backend and frontend from the path matrix', async () => {
+    const { APP_BASE, BACKEND_ID, appPath, apiUrl, authTokenStorageKey } = await loadFor(
+      '/stack/backend-java-spring/frontend-typescript-react/login',
+    );
+
+    expect(APP_BASE).toBe('/stack/backend-java-spring/frontend-typescript-react');
+    expect(BACKEND_ID).toBe('backend-java-spring');
+    expect(authTokenStorageKey()).toBe('authToken:backend-java-spring');
+    expect(appPath('/js/header.js')).toBe(
+      '/stack/backend-java-spring/frontend-typescript-react/js/header.js',
+    );
+    expect(apiUrl('/api/health')).toBe('/stack/backend-java-spring/api/health');
+  });
+
+  it('keeps a bare product mount when there is no backend prefix', async () => {
+    const { APP_BASE, BACKEND_ID, appPath, apiUrl, authTokenStorageKey } = await loadFor(
+      '/stack/frontend-typescript-react/login',
+    );
+
+    expect(APP_BASE).toBe('/stack/frontend-typescript-react');
+    expect(BACKEND_ID).toBeNull();
+    expect(authTokenStorageKey()).toBe('authToken');
+    expect(appPath('/js/header.js')).toBe('/stack/frontend-typescript-react/js/header.js');
+    expect(apiUrl('/api/health')).toBe('/api/health');
+  });
+
+  // The container publish-port and vite dev both serve the SPA here: a mount-shaped
+  // basename matches nothing and the router renders an empty page.
+  it('mounts at the document root when the path carries no mount at all', async () => {
+    const { APP_BASE, BACKEND_ID, appPath, apiUrl, authTokenStorageKey } = await loadFor('/login');
+
+    expect(APP_BASE).toBe('');
+    expect(BACKEND_ID).toBeNull();
+    expect(authTokenStorageKey()).toBe('authToken');
+    expect(appPath('/')).toBe('/');
+    expect(appPath('/js/header.js')).toBe('/js/header.js');
+    expect(apiUrl('/api/health')).toBe('/api/health');
+  });
+
+  it('scopes auth token keys per backend and shares them across frontends', async () => {
+    const spring = await loadFor('/stack/backend-java-spring/frontend-typescript-react/');
+    const fastapi = await loadFor('/stack/backend-python-fastapi/frontend-typescript-vue/login');
+
+    expect(spring.authTokenStorageKey()).toBe('authToken:backend-java-spring');
+    expect(fastapi.authTokenStorageKey()).toBe('authToken:backend-python-fastapi');
+    expect(spring.authTokenStorageKey('backend-python-fastapi')).toBe(
+      'authToken:backend-python-fastapi',
+    );
+  });
+
+  it('normalizes relative paths for appPath and apiUrl', async () => {
+    const { appPath, apiUrl } = await loadFor(
+      '/stack/backend-java-spring/frontend-typescript-react/',
+    );
+
+    expect(appPath('js/header.js')).toBe(
+      '/stack/backend-java-spring/frontend-typescript-react/js/header.js',
+    );
+    expect(apiUrl('api/health')).toBe('/stack/backend-java-spring/api/health');
+    expect(apiUrl('/api')).toBe('/stack/backend-java-spring/api');
+  });
+});

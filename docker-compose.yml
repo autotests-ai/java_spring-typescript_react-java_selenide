@@ -1,0 +1,69 @@
+name: autotests-ai-singlestack-app-examples
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: multistack_app_java_spring
+      POSTGRES_USER: multistack
+      POSTGRES_PASSWORD: multistack
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - singlestack_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multistack -d multistack_app_java_spring"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend-java-spring:
+    build:
+      context: ./backend-java-spring
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: multistack_app_java_spring
+      DB_USER: multistack
+      DB_PASSWORD: multistack
+      SERVER_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-autotests-ai-singlestack-dev-secret-change-in-production-min-32}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - singlestack_internal
+    ports:
+      - "${BACKEND_JAVA_PORT:-8800}:8080"
+
+  frontend-typescript-react:
+    build:
+      context: ./frontend-typescript-react
+    restart: unless-stopped
+    networks:
+      - singlestack_internal
+    ports:
+      - "${FRONTEND_TS_REACT_PORT:-9811}:80"
+
+  stand-gateway-ci:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/ci/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend-typescript-react:
+        condition: service_started
+      backend-java-spring:
+        condition: service_started
+    networks:
+      - singlestack_internal
+    ports:
+      - "${CI_GATEWAY_PORT:-9821}:80"
+
+networks:
+  singlestack_internal:
+
+volumes:
+  pgdata:
