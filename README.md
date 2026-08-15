@@ -24,7 +24,7 @@ Tests (gateway already up):
 
 ```bash
 cd tests-java-gradle-junit5-allure3-selenide
-./gradlew testApi -Denv=reference_ci -DallureReportMode=none
+./gradlew testApi -Denv=multistack_ci -DallureReportMode=none
 ```
 
 Maintainers: refresh from the live etalon in the zero-design-system monorepo:
