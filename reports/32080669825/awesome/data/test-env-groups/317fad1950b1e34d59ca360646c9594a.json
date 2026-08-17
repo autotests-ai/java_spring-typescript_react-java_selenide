@@ -1,1 +1,0 @@
-{"id":"317fad1950b1e34d59ca360646c9594a","fullName":"dev.multistack.app.service.AuthServiceTest.registerCreatesUser","name":"register saves user and returns auth response","status":"passed","testResultsByEnv":{"default":"51cf15e59f7811855dc8a07f4b42cbfe"}}

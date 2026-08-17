@@ -1,1 +1,0 @@
-{"id":"e472865bfb57943f42a0f92c98852e5c","fullName":"tests.testinfra.ConfigReaderTest.resolveBaseUrlFailsWhenBasePathMissing","name":"resolveBaseUrl fails when basePath directory is missing","status":"passed","testResultsByEnv":{"default":"de70de04dc13f39507dc736a56277d9f"}}

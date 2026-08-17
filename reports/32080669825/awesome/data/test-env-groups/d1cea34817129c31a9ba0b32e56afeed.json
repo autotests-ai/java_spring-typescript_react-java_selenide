@@ -1,1 +1,0 @@
-{"id":"d1cea34817129c31a9ba0b32e56afeed","fullName":"tests.testinfra.ConfigReaderTest.resolveBaseUrlResolvesRelativeBasePath","name":"resolveBaseUrl resolves relative basePath against user dir","status":"passed","testResultsByEnv":{"default":"3c539b33edfdb8944907597aefd8b556"}}
