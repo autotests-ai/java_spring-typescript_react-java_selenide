@@ -1,0 +1,431 @@
+name: CI
+
+# Default-stack takeaway only (java-spring + ts-react + java-selenide).
+# SSOT: this file. Runnable copy: takeaway `.github/workflows/ci.yml` (teaching name).
+# Do NOT copy over the matrix clone `autotests-ai-multistack-app/.github/workflows/ci.yml`.
+#
+# Paths are FLAT (takeaway). Nested ethalon / matrix clone keeps the fat orchestrator.
+#
+# Stands:
+#   pipeline — compose on the runner (`-Denv=multistack_ci`)
+#   stage    — https://stage.ai-first.autotests.ai/  (skip until vars.STAGE_HOST)
+#   prod     — https://ai-first.autotests.ai/        (skip until vars.DEPLOY_HOST)
+#
+# Not in this file: frontend sidecars, other languages, TestOps, Sonar, Telegram,
+# stage mutex, screenshot rewrite, Pages.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "SSH compose-up on the ai-first prod stand (needs vars.DEPLOY_HOST)"
+        type: boolean
+        default: false
+      deploy_stage:
+        description: "SSH compose-up on the ai-first stage stand (needs vars.STAGE_HOST)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+  JAVA_VERSION: "21"
+  NODE_VERSION: "26"
+  CHROME_FOR_TESTING_VERSION: "148.0.7778.178"
+  BACKEND: backend-java-spring
+  BACKEND_DIR: backend-java-spring
+  FRONTEND: frontend-typescript-react
+  FRONTEND_DIR: frontend-typescript-react
+  TESTS: tests-java-gradle-junit5-allure3-selenide
+  TESTS_DIR: tests-java-gradle-junit5-allure3-selenide
+  ALLURE_RESULTS_DIR: tests-java-gradle-junit5-allure3-selenide/build/allure-results
+  APP_URL: https://ai-first.autotests.ai/
+  STAGE_APP_URL: https://stage.ai-first.autotests.ai/
+  APP_HEALTH: https://ai-first.autotests.ai/api/health
+  STAGE_APP_HEALTH: https://stage.ai-first.autotests.ai/api/health
+  DEPLOY_SSH_SCRIPT: |
+    set -euo pipefail
+    APP_DIR="${DEPLOY_APP_DIR:?DEPLOY_APP_DIR is required}"
+    cd "$APP_DIR"
+    git fetch origin
+    git checkout --force "$IMAGE_TAG"
+    COMPOSE="docker compose"
+    if [ -n "${DEPLOY_COMPOSE_ENV_FILE:-}" ]; then
+      COMPOSE="$COMPOSE --env-file ${DEPLOY_COMPOSE_ENV_FILE}"
+    fi
+    $COMPOSE up -d --build --remove-orphans
+    curl -fsS --retry 30 --retry-delay 2 --retry-all-errors "${DEPLOY_HEALTH_URL}"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - &checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - &setup-java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - &setup-gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Unit tests (Gradle + JaCoCo)
+        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification -DexcludeTags=integration
+        working-directory: ${{ env.BACKEND_DIR }}
+      - uses: actions/upload-artifact@v7
+        if: success()
+        with:
+          name: coverage-backend
+          path: |
+            ${{ env.BACKEND_DIR }}/build/jacoco/**
+            ${{ env.BACKEND_DIR }}/build/reports/jacoco/**
+          if-no-files-found: error
+
+  integration-tests:
+    needs: unit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - name: Integration tests (Spring + Testcontainers PG)
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.BACKEND_DIR }}/build/allure-results
+        run: ./gradlew test -DincludeTags=integration
+        working-directory: ${{ env.BACKEND_DIR }}
+      - &upload-allure
+        name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-${{ github.job }}
+          path: ${{ env.BACKEND_DIR }}/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+
+  tests-harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - name: Harness tests
+        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification -Denv=multistack_ci -DincludeTags=harness
+        working-directory: ${{ env.TESTS_DIR }}
+      - uses: actions/upload-artifact@v7
+        if: success()
+        with:
+          name: coverage-harness
+          path: |
+            ${{ env.TESTS_DIR }}/build/jacoco/**
+            ${{ env.TESTS_DIR }}/build/reports/jacoco/**
+          if-no-files-found: error
+
+  component-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend-typescript-react/package-lock.json
+      - name: Install npm dependencies
+        run: npm ci
+        working-directory: ${{ env.FRONTEND_DIR }}
+      - name: Lint frontend
+        run: npm run lint --if-present
+        working-directory: ${{ env.FRONTEND_DIR }}
+      - name: Typecheck frontend
+        run: npm run typecheck --if-present
+        working-directory: ${{ env.FRONTEND_DIR }}
+      - name: Component tests (Vitest)
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.FRONTEND_DIR }}/allure-results
+        run: npm test -- --coverage
+        working-directory: ${{ env.FRONTEND_DIR }}
+      - uses: actions/upload-artifact@v7
+        if: success()
+        with:
+          name: coverage-frontend
+          path: ${{ env.FRONTEND_DIR }}/coverage/
+          if-no-files-found: error
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-component
+          path: frontend-typescript-react/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+
+  api-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - &compose-up
+        name: Compose default stack
+        run: |
+          set -euo pipefail
+          docker compose up -d --build
+          curl -fsS --retry 30 --retry-delay 2 --retry-all-errors http://127.0.0.1:8800/api/health
+          curl -fsS --retry 30 --retry-delay 2 --retry-all-errors -o /dev/null http://127.0.0.1:9821/
+      - name: API tests vs pipeline stand
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+        run: ./gradlew test -Denv=multistack_ci -DincludeTags=api
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-api
+          path: tests-java-gradle-junit5-allure3-selenide/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+
+  e2e-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - name: Cache Chrome for Testing
+        continue-on-error: true
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.tool_cache }}/setup-chrome
+          key: chrome-for-testing-${{ runner.os }}-${{ runner.arch }}-${{ env.CHROME_FOR_TESTING_VERSION }}
+      - &setup-chrome
+        name: Install pinned Chrome for Testing
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v2.1.2
+        with:
+          chrome-version: ${{ env.CHROME_FOR_TESTING_VERSION }}
+          install-chromedriver: true
+      - *compose-up
+      - name: E2E tests vs pipeline stand
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          CHROME_BINARY_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.setup-chrome.outputs.chromedriver-path }}
+        run: ./gradlew test -Denv=multistack_ci -DincludeTags=e2e -DexcludeTags=screenshot,mock
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-e2e
+          path: tests-java-gradle-junit5-allure3-selenide/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+
+  deploy:
+    needs: [unit-tests, integration-tests, tests-harness, component-tests, api-tests, e2e-tests]
+    if: >-
+      !cancelled() &&
+      vars.DEPLOY_HOST != '' &&
+      needs.unit-tests.result == 'success' &&
+      needs.integration-tests.result == 'success' &&
+      needs.tests-harness.result == 'success' &&
+      needs.component-tests.result == 'success' &&
+      needs.api-tests.result == 'success' &&
+      needs.e2e-tests.result == 'success' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && inputs.deploy)
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: ${{ vars.DEPLOY_ENVIRONMENT || 'ai-first-production' }}
+      url: ${{ env.APP_URL }}
+    env:
+      DEPLOY_APP_DIR: ${{ vars.DEPLOY_APP_DIR || '/home/autotests_ai_multistack/java_spring-typescript_react-java_selenide' }}
+      DEPLOY_COMPOSE_ENV_FILE: ${{ vars.DEPLOY_COMPOSE_ENV_FILE }}
+      DEPLOY_HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL || 'http://127.0.0.1:8800/api/health' }}
+    steps:
+      - name: Deploy prod stand
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 20m
+          envs: IMAGE_TAG,DEPLOY_APP_DIR,DEPLOY_COMPOSE_ENV_FILE,DEPLOY_HEALTH_URL
+          script: ${{ env.DEPLOY_SSH_SCRIPT }}
+
+  deploy-stage:
+    needs: [unit-tests, integration-tests, tests-harness, component-tests, api-tests, e2e-tests]
+    if: >-
+      !cancelled() &&
+      vars.STAGE_HOST != '' &&
+      vars.STAGE_APP_DIR != '' &&
+      needs.unit-tests.result == 'success' &&
+      needs.integration-tests.result == 'success' &&
+      needs.tests-harness.result == 'success' &&
+      needs.component-tests.result == 'success' &&
+      needs.api-tests.result == 'success' &&
+      needs.e2e-tests.result == 'success' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && inputs.deploy_stage)
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: ${{ vars.STAGE_ENVIRONMENT || 'ai-first-stage' }}
+      url: ${{ env.STAGE_APP_URL }}
+    env:
+      DEPLOY_APP_DIR: ${{ vars.STAGE_APP_DIR }}
+      DEPLOY_COMPOSE_ENV_FILE: ${{ vars.STAGE_COMPOSE_ENV_FILE }}
+      DEPLOY_HEALTH_URL: ${{ vars.STAGE_HEALTH_URL || 'http://127.0.0.1:8800/api/health' }}
+    steps:
+      - name: Deploy stage stand
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ vars.STAGE_HOST }}
+          username: ${{ vars.STAGE_USER || vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 20m
+          envs: IMAGE_TAG,DEPLOY_APP_DIR,DEPLOY_COMPOSE_ENV_FILE,DEPLOY_HEALTH_URL
+          script: ${{ env.DEPLOY_SSH_SCRIPT }}
+
+  api-tests-prod:
+    needs: deploy
+    if: always() && !cancelled() && needs.deploy.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Wait for live API
+        run: curl -fsS --retry 30 --retry-delay 2 --retry-all-errors "${{ env.APP_HEALTH }}"
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - name: API tests vs prod stand
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+        run: ./gradlew test -Denv=multistack_prod -DincludeTags=api
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-api-prod
+          path: tests-java-gradle-junit5-allure3-selenide/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+
+  e2e-tests-prod:
+    needs: [deploy, api-tests-prod]
+    if: always() && !cancelled() && needs.deploy.result == 'success' && needs.api-tests-prod.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - name: E2E tests vs prod stand (Selenoid)
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          SELENOID_REMOTE_URL: ${{ secrets.SELENOID_REMOTE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SELENOID_REMOTE_URL:-}" ]; then
+            echo "secrets.SELENOID_REMOTE_URL is required for prod e2e" >&2
+            exit 1
+          fi
+          ./gradlew test -Denv=multistack_prod -DincludeTags=e2e -DexcludeTags=screenshot,mock \
+            -DremoteUrl="${SELENOID_REMOTE_URL}"
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-e2e-prod
+          path: tests-java-gradle-junit5-allure3-selenide/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+
+  api-tests-stage:
+    needs: deploy-stage
+    if: always() && !cancelled() && needs.deploy-stage.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Wait for stage API
+        run: curl -fsS --retry 30 --retry-delay 2 --retry-all-errors "${{ env.STAGE_APP_HEALTH }}"
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - name: API tests vs stage stand
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+        run: ./gradlew test -Denv=multistack_stage -DincludeTags=api
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-api-stage
+          path: tests-java-gradle-junit5-allure3-selenide/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+
+  e2e-tests-stage:
+    needs: [deploy-stage, api-tests-stage]
+    if: always() && !cancelled() && needs.deploy-stage.result == 'success' && needs.api-tests-stage.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - name: E2E tests vs stage stand (Selenoid)
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          SELENOID_REMOTE_URL: ${{ secrets.SELENOID_REMOTE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SELENOID_REMOTE_URL:-}" ]; then
+            echo "secrets.SELENOID_REMOTE_URL is required for stage e2e" >&2
+            exit 1
+          fi
+          ./gradlew test -Denv=multistack_stage -DincludeTags=e2e -DexcludeTags=screenshot,mock \
+            -DremoteUrl="${SELENOID_REMOTE_URL}"
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-e2e-stage
+          path: tests-java-gradle-junit5-allure3-selenide/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
