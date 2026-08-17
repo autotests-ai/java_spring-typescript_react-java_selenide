@@ -26,6 +26,7 @@ class BackendWiringApiTests extends ApiTestBase {
 
     @Test
     @Tag("api")
+    @Tag("smoke")
     @DisplayName("GET /api/health — deployed service is the active backend module, not a neighbour")
     void healthReportsActiveBackendService() {
         given()

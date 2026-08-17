@@ -7,7 +7,7 @@ name: CI
 # Paths are FLAT (takeaway). Nested ethalon / matrix clone keeps the fat orchestrator.
 #
 # Stands:
-#   pipeline — compose on the runner (`-Denv=multistack_ci`)
+#   pipeline — compose on the runner (`-Denv=ci`)
 #   stage    — https://stage.ai-first.autotests.ai/  (skip until vars.STAGE_HOST)
 #   prod     — https://ai-first.autotests.ai/        (skip until vars.DEPLOY_HOST)
 #
@@ -140,7 +140,7 @@ jobs:
       - *setup-java
       - *setup-gradle
       - name: Harness tests
-        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification -Denv=multistack_ci -DincludeTags=harness
+        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification -Denv=ci -DincludeTags=harness
         working-directory: ${{ env.TESTS_DIR }}
       - uses: actions/upload-artifact@v7
         if: success()
@@ -217,7 +217,7 @@ jobs:
       - name: API tests vs pipeline stand
         env:
           ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
-        run: ./gradlew test -Denv=multistack_ci -DincludeTags=api
+        run: ./gradlew test -Denv=ci -DincludeTags=api
         working-directory: ${{ env.TESTS_DIR }}
       - name: Publish raw Allure results
         if: always()
@@ -255,7 +255,7 @@ jobs:
           ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
           CHROME_BINARY_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
           CHROMEDRIVER_PATH: ${{ steps.setup-chrome.outputs.chromedriver-path }}
-        run: ./gradlew test -Denv=multistack_ci -DincludeTags=e2e -DexcludeTags=screenshot,mock
+        run: ./gradlew test -Denv=ci -DincludeTags=e2e -DexcludeTags=screenshot,mock
         working-directory: ${{ env.TESTS_DIR }}
       - name: Publish raw Allure results
         if: always()
@@ -349,10 +349,10 @@ jobs:
       - *checkout
       - *setup-java
       - *setup-gradle
-      - name: API tests vs prod stand
+      - name: API smoke vs prod stand
         env:
           ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
-        run: ./gradlew test -Denv=multistack_prod -DincludeTags=api
+        run: ./gradlew test -Denv=prod -DincludeTags='api & smoke'
         working-directory: ${{ env.TESTS_DIR }}
       - name: Publish raw Allure results
         if: always()
@@ -373,7 +373,7 @@ jobs:
       - *checkout
       - *setup-java
       - *setup-gradle
-      - name: E2E tests vs prod stand (Selenoid)
+      - name: E2E smoke vs prod stand (Selenoid)
         env:
           ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
           SELENOID_REMOTE_URL: ${{ secrets.SELENOID_REMOTE_URL }}
@@ -383,7 +383,7 @@ jobs:
             echo "secrets.SELENOID_REMOTE_URL is required for prod e2e" >&2
             exit 1
           fi
-          ./gradlew test -Denv=multistack_prod -DincludeTags=e2e -DexcludeTags=screenshot,mock \
+          ./gradlew test -Denv=prod -DincludeTags='e2e & smoke' -DexcludeTags=screenshot,mock \
             -DremoteUrl="${SELENOID_REMOTE_URL}"
         working-directory: ${{ env.TESTS_DIR }}
       - name: Publish raw Allure results
@@ -410,7 +410,7 @@ jobs:
       - name: API tests vs stage stand
         env:
           ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
-        run: ./gradlew test -Denv=multistack_stage -DincludeTags=api
+        run: ./gradlew test -Denv=stage -DincludeTags=api
         working-directory: ${{ env.TESTS_DIR }}
       - name: Publish raw Allure results
         if: always()
@@ -441,7 +441,7 @@ jobs:
             echo "secrets.SELENOID_REMOTE_URL is required for stage e2e" >&2
             exit 1
           fi
-          ./gradlew test -Denv=multistack_stage -DincludeTags=e2e -DexcludeTags=screenshot,mock \
+          ./gradlew test -Denv=stage -DincludeTags=e2e -DexcludeTags=screenshot,mock \
             -DremoteUrl="${SELENOID_REMOTE_URL}"
         working-directory: ${{ env.TESTS_DIR }}
       - name: Publish raw Allure results

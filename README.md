@@ -24,12 +24,12 @@ Tests (gateway already up):
 
 ```bash
 cd tests-java-gradle-junit5-allure3-selenide
-./gradlew test -Denv=multistack_ci -DincludeTags=e2e -DexcludeTags=screenshot,mock
+./gradlew test -Denv=ci -DincludeTags=e2e -DexcludeTags=screenshot,mock
 ```
 
-CI: `.github/workflows/ci.yml` (SSOT in hub ethalon `_ethalon/singlestack_github.yml`).  
-Prod: [https://ai-first.autotests.ai/](https://ai-first.autotests.ai/) (`-Denv=multistack_prod`).  
-Stage: [https://stage.ai-first.autotests.ai/](https://stage.ai-first.autotests.ai/) (`-Denv=multistack_stage`).
+CI: `.github/workflows/ci.yml` (SSOT `_ethalon/singlestack_github.yml`).  
+Prod stand: [https://ai-first.autotests.ai/](https://ai-first.autotests.ai/) (`-Denv=prod`).  
+Stage: [https://stage.ai-first.autotests.ai/](https://stage.ai-first.autotests.ai/) (`-Denv=stage`).
 
 Maintainers: refresh from the hub ethalon in the zero-design-system monorepo:
 

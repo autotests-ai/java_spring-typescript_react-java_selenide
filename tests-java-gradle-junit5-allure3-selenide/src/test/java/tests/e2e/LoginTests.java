@@ -25,6 +25,7 @@ class LoginTests extends TestBase {
 
     @Test
     @Tag("e2e")
+    @Tag("smoke")
     @Tag("positive")
     @DisplayName("User is logged in with valid credentials")
     void shouldLoginWithValidCredentials() {

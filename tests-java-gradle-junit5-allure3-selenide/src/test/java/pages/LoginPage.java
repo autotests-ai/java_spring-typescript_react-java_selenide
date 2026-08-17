@@ -1,11 +1,13 @@
 package pages;
 
 import static com.codeborne.selenide.Condition.text;
+import static com.codeborne.selenide.Condition.value;
 import static com.codeborne.selenide.Condition.visible;
 import static com.codeborne.selenide.Selenide.$;
 import static com.codeborne.selenide.Selenide.open;
 
 import com.codeborne.selenide.SelenideElement;
+import helpers.ReactInput;
 import io.qameta.allure.Step;
 
 import static pages.PageTimeouts.PAGE_READY;
@@ -22,25 +24,30 @@ public class LoginPage {
     @Step("Open login page")
     public LoginPage openPage() {
         open("/login");
-        return this;
+        return shouldShowLoginForm();
     }
 
     @Step("Fill and submit form")
     public HomePage fillAndSubmitForm(String username, String password) {
-        typeUsername(username);
-        typePassword(password);
-        return submit();
+        shouldShowLoginForm();
+        ReactInput.fillAndSubmitLogin(username, password);
+        BrowserUrl.shouldBeAtAppRoot();
+        return new HomePage();
     }
 
     @Step("Type username: {username}")
     public LoginPage typeUsername(String username) {
-        loginInput.setValue(username);
+        loginInput.shouldBe(visible, PAGE_READY);
+        ReactInput.setValue(loginInput, username);
+        loginInput.shouldHave(value(username));
         return this;
     }
 
     @Step("Type password")
     public LoginPage typePassword(String password) {
-        passwordInput.setValue(password);
+        passwordInput.shouldBe(visible, PAGE_READY);
+        ReactInput.setValue(passwordInput, password);
+        passwordInput.shouldHave(value(password));
         return this;
     }
 

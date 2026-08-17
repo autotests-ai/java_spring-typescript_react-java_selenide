@@ -1,3 +1,5 @@
+import type { HeaderConfig } from '@zero-design-system/react';
+import { envNavItems, PROD_ORIGIN, PUBLIC_HOST, STAGE_ORIGIN } from '../../vendor/env-hosts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Canonical design-system header from lean runtime (committed; works in
@@ -21,7 +23,7 @@ vi.mock('../../vendor/frontend-javascript-app/js/dom-utils.js', () => ({
 
 const MOUNT = '/frontend-typescript-react';
 
-const REFERENCE_HEADER_CONFIG = {
+const REFERENCE_HEADER_CONFIG: HeaderConfig = {
   brand: { href: `${MOUNT}/`, label: 'Multistack' },
   nav: [
     { href: `${MOUNT}/`, label: 'Home', active: false, testid: 'header-nav-home' },
@@ -38,6 +40,7 @@ const REFERENCE_HEADER_CONFIG = {
       active: false,
       testid: 'header-nav-stack',
     },
+    ...envNavItems(),
   ],
   lang: { default: 'en' as const },
   theme: { default: 'dark' as const },
@@ -79,8 +82,8 @@ async function mountAt(path: string): Promise<void> {
   vi.resetModules();
   await import(/* @vite-ignore */ HEADER_JS);
   await vi.waitFor(() => {
-    expect(navLinks().length).toBe(4);
-    expect(menuNavLinks().length).toBe(4);
+    expect(navLinks().length).toBe(6);
+    expect(menuNavLinks().length).toBe(6);
   });
 }
 
@@ -185,6 +188,8 @@ describe('canonical header.js — mobile burger menu', () => {
       'header-menu-nav-login',
       'header-menu-nav-register',
       'header-menu-nav-stack',
+      'header-menu-nav-stage',
+      'header-menu-nav-prod',
     ]);
     expect(document.querySelector('[data-testid="header-menu-search-input"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="header-menu-github"]')).not.toBeNull();
@@ -225,5 +230,80 @@ describe('canonical header.js — mobile burger menu', () => {
 
     menuNavLinks()[0]?.click();
     expect(menu?.hidden).toBe(true);
+  });
+});
+
+describe('env-hosts — matrix public_host', () => {
+  it('derives Stage/Prod origins from public_host', () => {
+    expect(PROD_ORIGIN).toBe(`https://${PUBLIC_HOST}`);
+    expect(STAGE_ORIGIN).toBe(`https://stage.${PUBLIC_HOST}`);
+    expect(envNavItems().map((item) => item.testid)).toEqual([
+      'header-nav-stage',
+      'header-nav-prod',
+    ]);
+  });
+});
+
+describe('canonical header.js — host-match env switchers', () => {
+  beforeEach(() => {
+    window.history.replaceState({}, '', `${MOUNT}/`);
+    document.documentElement.className = '';
+    mockMobileViewport();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('rewrites Stage/Prod hrefs to the current path without stealing page active', async () => {
+    await mountAt(`${MOUNT}/login`);
+
+    expect(activeTestids()).toEqual(['header-nav-login']);
+    expect(ariaCurrentTestids()).toEqual(['header-nav-login']);
+
+    const stage = document.querySelector<HTMLAnchorElement>('[data-testid="header-nav-stage"]');
+    const prod = document.querySelector<HTMLAnchorElement>('[data-testid="header-nav-prod"]');
+    expect(stage?.getAttribute('href')).toBe(`${STAGE_ORIGIN}${MOUNT}/login`);
+    expect(prod?.getAttribute('href')).toBe(`${PROD_ORIGIN}${MOUNT}/login`);
+    expect(stage?.classList.contains('is-active')).toBe(false);
+    expect(prod?.classList.contains('is-active')).toBe(false);
+  });
+
+  it('marks the host-match item active when hostname matches', async () => {
+    await mountAt(`${MOUNT}/`);
+
+    const config = structuredClone(REFERENCE_HEADER_CONFIG);
+    config.nav = [
+      ...config.nav.filter((item) => item.match !== 'host'),
+      {
+        href: `${window.location.origin}/`,
+        label: 'Here',
+        testid: 'header-nav-here',
+        match: 'host' as const,
+      },
+    ];
+    document.body.innerHTML = '<div id="app-header"></div>';
+    (window as unknown as { headerConfig: unknown }).headerConfig = config;
+    vi.resetModules();
+    await import(/* @vite-ignore */ HEADER_JS);
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="header-nav-here"]')).not.toBeNull();
+    });
+
+    const here = document.querySelector<HTMLAnchorElement>('[data-testid="header-nav-here"]');
+    expect(here?.classList.contains('is-active')).toBe(true);
+    expect(here?.getAttribute('aria-current')).toBe('true');
+    expect(activeTestids()).toEqual(['header-nav-home', 'header-nav-here']);
+  });
+
+  it('updates host-match hrefs on SPA pushState', async () => {
+    await mountAt(`${MOUNT}/`);
+    window.history.pushState({}, '', `${MOUNT}/register`);
+
+    await vi.waitFor(() => {
+      const stage = document.querySelector<HTMLAnchorElement>('[data-testid="header-nav-stage"]');
+      expect(stage?.getAttribute('href')).toBe(`${STAGE_ORIGIN}${MOUNT}/register`);
+    });
+    expect(activeTestids()).toEqual(['header-nav-register']);
   });
 });
