@@ -279,7 +279,7 @@ describe('canonical header.js — host-match env switchers', () => {
 
     const config = structuredClone(REFERENCE_HEADER_CONFIG);
     config.nav = [
-      ...config.nav.filter((item) => item.match !== 'host'),
+      ...(config.nav ?? []).filter((item) => item.match !== 'host'),
       {
         href: `${window.location.origin}/`,
         label: 'Here',
