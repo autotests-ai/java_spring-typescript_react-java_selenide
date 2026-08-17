@@ -41,4 +41,15 @@ CI SSOT is `mock/linux/chrome-148` plus the CFT pin in `chrome-for-testing.prope
 Other browsers are sibling folders (`firefox-140/` would not be read by this job).
 Do **not** set `SCREENSHOT_OS=linux` on a Mac.
 
+## Allure CLI pins
+
+Exact versions live in `package.json`; the install tree is `package-lock.json`. CI runs `npm ci` (job `allure-npm-lock` checks they match; `publish-allure-report` is gating on generate). After changing pins:
+
+```bash
+nvm use 26 && npm install --package-lock-only
+node scripts/check-package-lock.mjs
+```
+
+Commit both files. Do not use `latest`.
+
 Naming matrix for other Java stacks: [../../NAMING.md](../../NAMING.md).

@@ -27,7 +27,7 @@ cd tests-java-gradle-junit5-allure3-selenide
 ./gradlew testApi -Denv=multistack_ci -DallureReportMode=none
 ```
 
-Maintainers: refresh from the live etalon in the zero-design-system monorepo:
+Maintainers: refresh from the hub ethalon in the zero-design-system monorepo:
 
 ```bash
 ./generators/render/render.sh --preset singlestack
