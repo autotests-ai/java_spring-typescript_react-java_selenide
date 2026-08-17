@@ -22,11 +22,11 @@ public final class TokensCss {
         return firstExisting(
                 Path.of("..", "..", "..", "frontend", "_shared", "frontend-javascript-app",
                         "css", "tokens.css"),
-                Path.of("..", "..", "frontend-typescript-react", "vendor", "frontend-javascript-app",
+                Path.of("..", "frontend-typescript-react", "vendor", "frontend-javascript-app",
                         "css", "tokens.css"),
                 Path.of("..", "..", "..", "backend", "java", "backend-java-spring",
                         "src", "main", "resources", "static", "css", "tokens.css"),
-                Path.of("..", "..", "backend-java-spring",
+                Path.of("..", "backend-java-spring",
                         "src", "main", "resources", "static", "css", "tokens.css")
         );
     }
