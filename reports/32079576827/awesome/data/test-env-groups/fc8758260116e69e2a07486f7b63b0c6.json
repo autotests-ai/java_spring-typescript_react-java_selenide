@@ -1,1 +1,0 @@
-{"id":"fc8758260116e69e2a07486f7b63b0c6","fullName":"tests.testinfra.ConfigReaderTest.resolveApiBaseUrlFallsBackToHubUrl","name":"resolveApiBaseUrl falls back to hubUrl when apiBaseUrl is empty","status":"passed","testResultsByEnv":{"default":"7531290cf9d9aacc31b846ad43383875"}}
