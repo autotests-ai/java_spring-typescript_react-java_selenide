@@ -1,0 +1,17 @@
+{
+  "scenarioName": "health",
+  "requiredScenarioState": "error",
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/health"
+  },
+  "response": {
+    "status": 500,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "message": "Injected failure — UI error-state slice"
+    }
+  }
+}

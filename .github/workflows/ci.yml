@@ -16,7 +16,8 @@ name: CI
 # jobs.<id>.permissions — that job uses literal contents: write.
 #
 # Not in this file: frontend sidecars, other languages, TestOps, Sonar, Telegram,
-# stage mutex, screenshot rewrite.
+# stage mutex. Screenshot compare: ui-mock-tests (every PR) and e2e-tests-stage.
+# Rewrite: dispatch update_mock_screenshots / update_stage_screenshots.
 
 on:
   pull_request:
@@ -30,6 +31,14 @@ on:
         default: false
       deploy_stage:
         description: "SSH compose-up on the ai-first stage stand (needs vars.STAGE_HOST)"
+        type: boolean
+        default: false
+      update_mock_screenshots:
+        description: "ui-mock-tests: rewrite mock screenshot PNGs (skips compare)"
+        type: boolean
+        default: false
+      update_stage_screenshots:
+        description: "e2e-tests-stage: rewrite stage screenshot PNGs (skips compare)"
         type: boolean
         default: false
 
@@ -236,7 +245,8 @@ jobs:
       - *checkout
       - *setup-java
       - *setup-gradle
-      - name: Cache Chrome for Testing
+      - &cache-chrome
+        name: Cache Chrome for Testing
         continue-on-error: true
         uses: actions/cache@v6
         with:
@@ -267,8 +277,95 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  ui-mock-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SCREENSHOT_OS: linux
+      SCREENSHOT_BROWSER: chrome
+    steps:
+      - *checkout
+      - *setup-java
+      - *setup-gradle
+      - *cache-chrome
+      - *setup-chrome
+      - name: Compose mock stand
+        run: |
+          set -euo pipefail
+          docker compose --profile mock up -d --build stand-gateway
+          curl -fsS --retry 30 --retry-delay 2 --retry-all-errors http://127.0.0.1:9911/api/health
+          curl -fsS --retry 30 --retry-delay 2 --retry-all-errors -o /dev/null http://127.0.0.1:9911/
+      - name: Mock tests
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          CHROME_BINARY_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.setup-chrome.outputs.chromedriver-path }}
+        run: ./gradlew test -Denv=mock -DincludeTags=mock
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Stash mock Allure results
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          STASH="${{ env.TESTS_DIR }}/build/allure-results-mock-stash"
+          SRC="${{ env.TESTS_DIR }}/build/allure-results"
+          mkdir -p "$STASH"
+          if [ -d "$SRC" ]; then cp -R "$SRC/." "$STASH/"; fi
+      - name: Screenshot mock compare
+        if: >-
+          always() && !cancelled() &&
+          (github.event_name != 'workflow_dispatch' || inputs.update_mock_screenshots != true)
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          CHROME_BINARY_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.setup-chrome.outputs.chromedriver-path }}
+        run: SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=mock -DincludeTags=screenshot
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Update mock screenshots
+        if: >-
+          always() && !cancelled() &&
+          github.event_name == 'workflow_dispatch' && inputs.update_mock_screenshots
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          CHROME_BINARY_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CHROMEDRIVER_PATH: ${{ steps.setup-chrome.outputs.chromedriver-path }}
+        run: SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=mock -DincludeTags=screenshot -DupdateScreenshots=true
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Merge Allure results
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          STASH="${{ env.TESTS_DIR }}/build/allure-results-mock-stash"
+          DEST="${{ env.TESTS_DIR }}/build/allure-results"
+          mkdir -p "$DEST"
+          if [ -d "$STASH" ]; then cp -R "$STASH/." "$DEST/"; fi
+      - name: Tear down mock stand
+        if: always()
+        continue-on-error: true
+        run: docker compose --profile mock down -v --remove-orphans
+      - name: Publish raw Allure results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-results-ui-mock
+          path: tests-java-gradle-junit5-allure3-selenide/build/allure-results/**
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Publish mock screenshot PNGs
+        if: >-
+          always() &&
+          github.event_name == 'workflow_dispatch' && inputs.update_mock_screenshots
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: mock-screenshot-pngs
+          path: tests-java-gradle-junit5-allure3-selenide/src/test/resources/screenshots/
+          if-no-files-found: ignore
+
   deploy:
-    needs: [unit-tests, integration-tests, tests-harness, component-tests, api-tests, e2e-tests]
+    needs: [unit-tests, integration-tests, tests-harness, component-tests, api-tests, e2e-tests, ui-mock-tests]
     if: >-
       !cancelled() &&
       vars.DEPLOY_HOST != '' &&
@@ -278,6 +375,7 @@ jobs:
       needs.component-tests.result == 'success' &&
       needs.api-tests.result == 'success' &&
       needs.e2e-tests.result == 'success' &&
+      needs.ui-mock-tests.result == 'success' &&
       (
         (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (github.event_name == 'workflow_dispatch' && inputs.deploy)
@@ -303,7 +401,7 @@ jobs:
           script: ${{ env.DEPLOY_SSH_SCRIPT }}
 
   deploy-stage:
-    needs: [unit-tests, integration-tests, tests-harness, component-tests, api-tests, e2e-tests]
+    needs: [unit-tests, integration-tests, tests-harness, component-tests, api-tests, e2e-tests, ui-mock-tests]
     if: >-
       !cancelled() &&
       vars.STAGE_HOST != '' &&
@@ -314,6 +412,7 @@ jobs:
       needs.component-tests.result == 'success' &&
       needs.api-tests.result == 'success' &&
       needs.e2e-tests.result == 'success' &&
+      needs.ui-mock-tests.result == 'success' &&
       (
         (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (github.event_name == 'workflow_dispatch' && inputs.deploy_stage)
@@ -426,7 +525,10 @@ jobs:
     needs: [deploy-stage, api-tests-stage]
     if: always() && !cancelled() && needs.deploy-stage.result == 'success' && needs.api-tests-stage.result == 'success'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
+    env:
+      SCREENSHOT_OS: linux
+      SCREENSHOT_BROWSER: chrome
     steps:
       - *checkout
       - *setup-java
@@ -444,6 +546,66 @@ jobs:
           ./gradlew test -Denv=stage -DincludeTags=e2e -DexcludeTags=screenshot,mock \
             -DremoteUrl="${SELENOID_REMOTE_URL}"
         working-directory: ${{ env.TESTS_DIR }}
+      - name: Stash e2e Allure results
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          STASH="${{ env.TESTS_DIR }}/build/allure-results-e2e-stage-stash"
+          SRC="${{ env.TESTS_DIR }}/build/allure-results"
+          mkdir -p "$STASH"
+          if [ -d "$SRC" ]; then cp -R "$SRC/." "$STASH/"; fi
+      - name: Screenshot stage compare
+        if: >-
+          always() && !cancelled() &&
+          (github.event_name != 'workflow_dispatch' || inputs.update_stage_screenshots != true)
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          SELENOID_REMOTE_URL: ${{ secrets.SELENOID_REMOTE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SELENOID_REMOTE_URL:-}" ]; then
+            echo "secrets.SELENOID_REMOTE_URL is required for stage screenshots" >&2
+            exit 1
+          fi
+          SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=stage -DincludeTags=screenshot \
+            -DremoteUrl="${SELENOID_REMOTE_URL}"
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Update stage screenshots
+        if: >-
+          always() && !cancelled() &&
+          github.event_name == 'workflow_dispatch' && inputs.update_stage_screenshots
+        env:
+          ALLURE_RESULTS: ${{ github.workspace }}/${{ env.ALLURE_RESULTS_DIR }}
+          SELENOID_REMOTE_URL: ${{ secrets.SELENOID_REMOTE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SELENOID_REMOTE_URL:-}" ]; then
+            echo "secrets.SELENOID_REMOTE_URL is required for stage screenshots" >&2
+            exit 1
+          fi
+          SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=stage -DincludeTags=screenshot \
+            -DupdateScreenshots=true -DremoteUrl="${SELENOID_REMOTE_URL}"
+        working-directory: ${{ env.TESTS_DIR }}
+      - name: Merge Allure results
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          STASH="${{ env.TESTS_DIR }}/build/allure-results-e2e-stage-stash"
+          DEST="${{ env.TESTS_DIR }}/build/allure-results"
+          mkdir -p "$DEST"
+          if [ -d "$STASH" ]; then cp -R "$STASH/." "$DEST/"; fi
+      - name: Publish stage screenshot PNGs
+        if: >-
+          always() &&
+          github.event_name == 'workflow_dispatch' && inputs.update_stage_screenshots
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: stage-screenshot-pngs
+          path: tests-java-gradle-junit5-allure3-selenide/src/test/resources/screenshots/
+          if-no-files-found: ignore
       - name: Publish raw Allure results
         if: always()
         continue-on-error: true
@@ -465,6 +627,7 @@ jobs:
       - component-tests
       - api-tests
       - e2e-tests
+      - ui-mock-tests
       - deploy
       - api-tests-prod
       - e2e-tests-prod
