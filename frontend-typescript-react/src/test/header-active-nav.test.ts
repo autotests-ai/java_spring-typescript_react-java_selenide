@@ -1,5 +1,5 @@
 import type { HeaderConfig } from '@zero-design-system/react';
-import { envNavItems, PROD_ORIGIN, PUBLIC_HOST, STAGE_ORIGIN } from '../../vendor/env-hosts';
+import { envNavItems, PROD_ORIGIN, PUBLIC_HOST, STAGE_ORIGIN } from '../../vendor/frontend-javascript-app/js/env-hosts.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Canonical design-system header from lean runtime (committed; works in
