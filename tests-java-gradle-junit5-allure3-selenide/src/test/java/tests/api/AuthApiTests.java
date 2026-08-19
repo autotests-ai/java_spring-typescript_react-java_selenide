@@ -5,6 +5,7 @@ import api.ApiTestBase;
 import api.AuthApiClient;
 import api.model.LoginRequest;
 import api.model.RegisterRequest;
+import helpers.DataFaker;
 import io.qameta.allure.Epic;
 import io.qameta.allure.Feature;
 import io.qameta.allure.Severity;
@@ -67,7 +68,7 @@ class AuthApiTests extends ApiTestBase {
     @DisplayName("POST /api/auth/login answers an unknown user with the same 401 (no enumeration)")
     void loginWithUnknownUsername() {
         given(jsonSpec)
-                .body(new LoginRequest("ghost_" + java.util.UUID.randomUUID().toString().substring(0, 8), "password123"))
+                .body(new LoginRequest(DataFaker.username(), "password123"))
                 .when()
                 .post("/api/auth/login")
                 .then()
@@ -94,9 +95,38 @@ class AuthApiTests extends ApiTestBase {
 
     @Test
     @Tag("api")
+    @Tag("negative")
+    @DisplayName("POST /api/auth/login rejects a short username with 400 and a field message")
+    void loginRejectsShortUsername() {
+        given(jsonSpec)
+                .body(new LoginRequest("ab", "password1"))
+                .when()
+                .post("/api/auth/login")
+                .then()
+                .statusCode(400)
+                .body(matchesJsonSchemaInClasspath("schemas/error.json"))
+                .body("message", containsString("username"));
+    }
+
+    @Test
+    @Tag("api")
+    @Tag("negative")
+    @DisplayName("POST /api/auth/login answers a malformed JSON body with 400, not 401")
+    void loginRejectsMalformedJson() {
+        given(jsonSpec)
+                .body("not json")
+                .when()
+                .post("/api/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", equalTo("Request body is not valid JSON"));
+    }
+
+    @Test
+    @Tag("api")
     @DisplayName("POST /api/auth/register creates a user, returns the auth contract, and cleans up")
     void registerNewUser() {
-        String username = "user_" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        String username = DataFaker.username();
 
         String token = given(jsonSpec)
                 .body(new RegisterRequest(username, "password123"))
@@ -206,9 +236,21 @@ class AuthApiTests extends ApiTestBase {
 
     @Test
     @Tag("api")
+    @Tag("negative")
+    @DisplayName("DELETE /api/auth/me without a token returns 401")
+    void deleteWithoutToken() {
+        given()
+                .when()
+                .delete("/api/auth/me")
+                .then()
+                .statusCode(401);
+    }
+
+    @Test
+    @Tag("api")
     @DisplayName("DELETE /api/auth/me removes the account: repeated login is rejected")
     void deleteRemovesAccount() {
-        String username = "user_" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        String username = DataFaker.username();
         String token = AuthApiClient.register(username, "password123");
 
         AuthApiClient.deleteAccount(token);

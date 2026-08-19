@@ -2,26 +2,21 @@
 
 Gradle · JUnit 5 · Allure 3 · Selenide · Rest Assured.
 
-Canonical Java automation module for autotests-ai-multistack-app ([`ci.yml`](../../../.github/workflows/ci.yml)).
+Canonical Java automation module ([`singlestack_github.yml`](../../_tests-meta/.github/_ethalon/singlestack_github.yml) → takeaway `.github/workflows/ci.yml`).
 
 **Not** backend unit tests → `backend/java/backend-java-spring/src/test/java/`.  
 **Not** RTL → `frontend/typescript/frontend-typescript-react/src/test/`.
 
-## Siblings (other languages)
-
-| Path | Stack |
-|------|-------|
-| [`../../javascript/tests-javascript-playwright/`](../../javascript/tests-javascript-playwright/) | Playwright |
-| [`../../python/tests-python-selenium/`](../../python/tests-python-selenium/) | pytest · Selenium |
+Other language stacks live in the matrix catalog, not this ethalon tree: [MATRIX-CATALOG.md](../../../../../../docs/testing/MATRIX-CATALOG.md).
 
 ## Layers
 
-One task `test`; the layer is a tag filter, the stand is `-Denv` ([../../LAYERS.md](../../LAYERS.md)).
+One task `test`; the layer is a tag filter, the stand is `-Denv` ([pyramid-map.yaml](../../../_contract/pyramid-map.yaml)).
 
 | Layer | Command | Notes |
 |-------|---------|--------|
 | harness (all) | `./gradlew test -Denv=ci -DincludeTags=harness` | umbrella — all `testinfra/` · CI job `tests-harness` (feeds `sonar-tests`) |
-| harness-backend | `./gradlew test -Denv=ci -DincludeTags=harness-backend` | `ConfigReader` · backend-only lane |
+| harness-backend | `./gradlew test -Denv=ci -DincludeTags=harness-backend` | `ConfigReader` · `AllureHttpHtml` · backend-only lane |
 | harness-frontend | `./gradlew test -Denv=ci -DincludeTags=harness-frontend` | CSS + HAR + `LocalChromePin` · inside full `tests-harness` (frontend lane included) |
 | api | `./gradlew test -Denv=ci -DincludeTags=api` | local compose; CI job `api-tests` |
 | api smoke | `./gradlew test -Denv=prod -DincludeTags='api & smoke'` | prod subset (health, seed, login); CI job `api-tests-prod` |
@@ -30,7 +25,7 @@ One task `test`; the layer is a tag filter, the stand is `-Denv` ([../../LAYERS.
 | e2e | `./gradlew test -Denv=ci -DincludeTags=e2e -DexcludeTags=screenshot,mock` | flow; screenshot is a second stage, not a pyramid layer |
 | e2e smoke | `./gradlew test -Denv=prod -DincludeTags='e2e & smoke' -DexcludeTags=screenshot,mock` | prod subset (login + home); CI job `e2e-tests-prod` (Selenoid) |
 | screenshot mock refresh | `SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=mock -DincludeTags=screenshot -DupdateScreenshots=true` | writes `screenshots/mock/linux/chrome-148/` · CI `ui-mock-tests` step `Update screenshots` (`update_mock_screenshots`) |
-| screenshot stage refresh | `SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=stage -DincludeTags=screenshot -DupdateScreenshots=true` | writes `screenshots/stage/linux/chrome-148/` |
+| screenshot stage refresh | `SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=stage -DincludeTags=screenshot -DupdateScreenshots=true` | writes `screenshots/stage/linux/chrome-148/` · CI `e2e-tests-stage` step `Update screenshots` (`update_stage_screenshots`) |
 | screenshot prod refresh | `SCREENSHOT_BROWSER=chrome ./gradlew test -Denv=prod -DincludeTags=screenshot -DupdateScreenshots=true` | writes `screenshots/prod/linux/chrome-148/` · CI `e2e-tests` step `Update screenshots` (`update_e2e_screenshots`) |
 | manual | `./gradlew test -Denv=ci -DincludeTags=manual` | **in code** — `@Manual` + Allure steps · `tests/manual/` (not a wiki checklist) |
 
@@ -56,5 +51,3 @@ node scripts/check-package-lock.mjs
 ```
 
 Commit both files. Do not use `latest`.
-
-Naming matrix for other Java stacks: [../../NAMING.md](../../NAMING.md).

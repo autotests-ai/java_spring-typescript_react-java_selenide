@@ -8,8 +8,8 @@ name: CI
 #
 # Stands:
 #   pipeline — compose on the runner (`-Denv=ci`)
-#   stage    — https://stage.ai-first.autotests.ai/  (e2e vs live; SSH when gate jobs pass)
-#   prod     — https://ai-first.autotests.ai/        (SSH when gate jobs pass)
+#   stage    — https://stage.ai-first.autotests.ai/  (SSH + live tests only after deploy)
+#   prod     — https://ai-first.autotests.ai/        (SSH + live tests only after deploy)
 #
 # Allure: one job publish-allure-report (lock pins, npm ci, generate). Pages is a
 # soft step in that job (push only). GitHub rejects expressions in
@@ -377,7 +377,7 @@ jobs:
       needs.e2e-tests.result == 'success' &&
       needs.ui-mock-tests.result == 'success' &&
       (
-        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (github.event_name == 'workflow_dispatch' && inputs.deploy)
       )
     runs-on: ubuntu-24.04
@@ -414,7 +414,7 @@ jobs:
       needs.e2e-tests.result == 'success' &&
       needs.ui-mock-tests.result == 'success' &&
       (
-        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (github.event_name == 'workflow_dispatch' && inputs.deploy_stage)
       )
     runs-on: ubuntu-24.04
@@ -497,10 +497,7 @@ jobs:
 
   api-tests-stage:
     needs: deploy-stage
-    if: >-
-      always() && !cancelled() &&
-      vars.STAGE_HOST != '' &&
-      (needs.deploy-stage.result == 'success' || needs.deploy-stage.result == 'skipped')
+    if: always() && !cancelled() && needs.deploy-stage.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -526,11 +523,7 @@ jobs:
 
   e2e-tests-stage:
     needs: [deploy-stage, api-tests-stage]
-    if: >-
-      always() && !cancelled() &&
-      vars.STAGE_HOST != '' &&
-      (needs.deploy-stage.result == 'success' || needs.deploy-stage.result == 'skipped') &&
-      (needs.api-tests-stage.result == 'success' || needs.api-tests-stage.result == 'skipped')
+    if: always() && !cancelled() && needs.deploy-stage.result == 'success' && needs.api-tests-stage.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:

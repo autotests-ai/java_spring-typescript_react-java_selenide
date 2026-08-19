@@ -21,6 +21,10 @@ public class HomePage {
             "var m=location.pathname.match(/\\/(backend-[^/]+)\\//);"
                     + "return m ? 'authToken:' + m[1] : 'authToken';";
 
+    /** Mirrors frontend DELETE_ACCOUNT_CONFIRM. */
+    private static final String DELETE_ACCOUNT_CONFIRM =
+            "Delete this account? This cannot be undone.";
+
     private final SelenideElement layout = $("[data-testid='multistack-layout']");
     private final SelenideElement healthStatus = $("[data-testid='health-status']");
     private final SelenideElement itemsList = $("[data-testid='items-list']");
@@ -32,6 +36,24 @@ public class HomePage {
 
     private String authTokenKey() {
         return executeJavaScript(AUTH_TOKEN_KEY_JS);
+    }
+
+    /** Mirrors RTL {@code vi.spyOn(window, 'confirm').mockReturnValue(accepted)}. */
+    private void stubConfirm(boolean accepted) {
+        executeJavaScript(
+                "window.__deleteConfirm = null;"
+                        + "(function(accepted) {"
+                        + "  window.confirm = function(msg) {"
+                        + "    window.__deleteConfirm = msg;"
+                        + "    return accepted;"
+                        + "  };"
+                        + "})(arguments[0]);",
+                accepted);
+    }
+
+    private void shouldHaveConfirmMessage() {
+        Wait().until(driver -> DELETE_ACCOUNT_CONFIRM.equals(
+                executeJavaScript("return window.__deleteConfirm;")));
     }
 
     @Step("Open home page")
@@ -77,6 +99,23 @@ public class HomePage {
         layout.shouldBe(visible, PAGE_READY);
         itemsList.shouldBe(visible);
         return this;
+    }
+
+    @Step("Verify home layout and health are mounted")
+    public HomePage shouldShowLayoutAndHealth() {
+        layout.shouldBe(visible, PAGE_READY);
+        healthStatus.shouldBe(visible);
+        return this;
+    }
+
+    @Step("Home layout panel is visible")
+    public SelenideElement layoutPanel() {
+        return layout.shouldBe(visible, PAGE_READY);
+    }
+
+    @Step("Welcome panel is visible")
+    public SelenideElement welcomePanelElement() {
+        return welcomePanel.shouldBe(visible, PAGE_READY);
     }
 
     @Step("Verify embedded header is mounted")
@@ -134,9 +173,7 @@ public class HomePage {
 
     /**
      * Session offers two exits: logout ends the session, delete account removes the user.
-     * Only presence is asserted here — actually clicking delete would drop the seeded
-     * account the whole prod suite logs in with. The behaviour lives in the frontend
-     * component suites, and the endpoint itself in AuthApiTests / AuthRoundTripApiTests.
+     * Click delete only against a throwaway account — never the seeded user1.
      */
     @Step("Verify session panel offers logout and delete account")
     public HomePage shouldShowSessionActions() {
@@ -149,5 +186,30 @@ public class HomePage {
     public LoginPage clickLogoutButton() {
         logoutButton.click();
         return new LoginPage();
+    }
+
+    @Step("Click delete account and confirm")
+    public LoginPage clickDeleteAccountAndConfirm() {
+        stubConfirm(true);
+        deleteAccountButton.shouldBe(visible, PAGE_READY).click();
+        shouldHaveConfirmMessage();
+        return new LoginPage();
+    }
+
+    @Step("Click delete account and cancel the confirm")
+    public HomePage clickDeleteAccountAndCancel() {
+        stubConfirm(false);
+        deleteAccountButton.shouldBe(visible, PAGE_READY).click();
+        shouldHaveConfirmMessage();
+        return this;
+    }
+
+    @Step("Verify auth token remains in localStorage")
+    public HomePage shouldKeepAuthToken() {
+        Wait().until(driver -> {
+            String key = executeJavaScript(AUTH_TOKEN_KEY_JS);
+            return executeJavaScript("return localStorage.getItem(arguments[0]);", key) != null;
+        });
+        return this;
     }
 }
