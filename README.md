@@ -1,38 +1,9 @@
-# java_spring-typescript_react-java_selenide
+# Archived
 
-Один стек, без матрицы других языков. Клонируй и запускай локально.
+This repository is **archived**.
 
-```bash
-git clone https://github.com/autotests-ai/java_spring-typescript_react-java_selenide.git
-cd java_spring-typescript_react-java_selenide
-docker compose up -d --build
-```
+Course takeaway (Java Spring + React + Selenide + agent skills) now lives at:
 
-| Role | Folder |
-|------|--------|
-| Backend | `backend-java-spring/` |
-| Frontend | `frontend-typescript-react/` (`vendor/` — запечённый design-system runtime) |
-| Tests | `tests-java-gradle-junit5-allure3-selenide/` |
+**https://github.com/qa-guru/ai-first-student-workspace**
 
-```bash
-curl -sf http://localhost:8800/api/health
-# UI same-origin (SPA + /api): http://localhost:9821/
-# UI container only:          http://localhost:9811/
-```
-
-Tests (gateway already up):
-
-```bash
-cd tests-java-gradle-junit5-allure3-selenide
-./gradlew test -Denv=ci -DincludeTags=e2e -DexcludeTags=screenshot,mock
-```
-
-CI: `.github/workflows/ci.yml` (SSOT `_ethalon/singlestack_github.yml`).  
-Prod stand: [https://ai-first.autotests.ai/](https://ai-first.autotests.ai/) (`-Denv=prod`).  
-Stage: [https://stage.ai-first.autotests.ai/](https://stage.ai-first.autotests.ai/) (`-Denv=stage`).
-
-Maintainers: refresh from the hub ethalon in the zero-design-system monorepo:
-
-```bash
-./generators/render/render.sh --preset singlestack
-```
+Fork that repo, then clone your fork. Do not use this tree for new work.
